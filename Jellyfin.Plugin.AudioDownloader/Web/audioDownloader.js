@@ -5,7 +5,6 @@
     var VIDEO_TYPES = ['Movie', 'Series', 'Season', 'Episode'];
 
     var currentItemId = null;
-    var timer = null;
     var pollCount = 0;
     var button = null;
 
@@ -375,6 +374,36 @@
         } catch (e) { /* noop */ }
     }
 
+    function dumpTopClasses() {
+        try {
+            var counts = {};
+            document.querySelectorAll('[class]').forEach(function (el) {
+                var name = typeof el.className === 'string' ? el.className : '';
+                if (!name) {
+                    return;
+                }
+
+                name.split(/\s+/).forEach(function (cls) {
+                    if (!cls || cls === 'ltr') {
+                        return;
+                    }
+
+                    counts[cls] = (counts[cls] || 0) + 1;
+                });
+            });
+
+            var top = Object.keys(counts).map(function (cls) {
+                return cls + '(' + counts[cls] + ')';
+            }).sort(function (a, b) {
+                var an = parseInt(a.replace(/^.*\((\d+)\)$/, '$1'), 10);
+                var bn = parseInt(b.replace(/^.*\((\d+)\)$/, '$1'), 10);
+                return bn - an;
+            }).slice(0, 30);
+
+            log('info', 'top classes: ' + top.join(', '));
+        } catch (e) { /* noop */ }
+    }
+
     function validateAndAdd(itemId, container) {
         if (currentItemId === itemId && document.getElementById('audioDownloaderButton')) {
             return;
@@ -435,16 +464,17 @@
         currentItemId = null;
     }
 
-    function handleRoute() {
-        if (window.location.hash.indexOf('#/details?') !== 0) {
-            if (timer) {
-                window.clearInterval(timer);
-                timer = null;
-            }
+    var lastHash = null;
+    var lastNotFoundLog = 0;
+    var topDumpedFor = null;
 
-            pollCount = 0;
+    function tick() {
+        var hash = window.location.hash || '';
+        if (hash !== lastHash) {
+            lastHash = hash;
+            log('info', 'route: "' + hash + '"');
             removeButton();
-            return;
+            currentItemId = null;
         }
 
         var itemId = getQueryParam('id');
@@ -452,37 +482,40 @@
             return;
         }
 
-        if (timer) {
-            window.clearInterval(timer);
+        var container = findButtonContainer();
+        if (!container) {
+            pollCount++;
+            var now = Date.now();
+            if (!lastNotFoundLog || now - lastNotFoundLog > 4000) {
+                lastNotFoundLog = now;
+                log('info', 'detail container not found (itemId ' + itemId + ', ' + (pollCount * 0.5).toFixed(1) + 's)');
+            }
+
+            if (topDumpedFor !== hash) {
+                topDumpedFor = hash;
+                dumpDetailClasses();
+                dumpTopClasses();
+            }
+
+            return;
         }
 
-        timer = window.setInterval(function () {
-            var container = findButtonContainer();
-            if (!container) {
-                pollCount++;
-                if (pollCount === 1 || pollCount % 8 === 1) {
-                    log('info', 'detail container not found yet (' + (pollCount * 0.5).toFixed(1) + 's)');
-                }
+        if (currentItemId !== itemId) {
+            removeButton();
+        }
 
-                return;
-            }
-
-            if (currentItemId !== itemId) {
-                removeButton();
-            }
-
-            if (document.getElementById('audioDownloaderButton')) {
-                return;
-            }
-
-            validateAndAdd(itemId, container);
+        if (document.getElementById('audioDownloaderButton')) {
             pollCount = 0;
-        }, 500);
+            return;
+        }
+
+        validateAndAdd(itemId, container);
+        pollCount = 0;
     }
 
     log('info', 'script loaded');
-    dumpDetailClasses();
-    window.addEventListener('hashchange', handleRoute);
-    document.addEventListener('DOMContentLoaded', handleRoute);
-    handleRoute();
+    window.addEventListener('hashchange', tick);
+    document.addEventListener('DOMContentLoaded', tick);
+    window.setInterval(tick, 500);
+    tick();
 })();
