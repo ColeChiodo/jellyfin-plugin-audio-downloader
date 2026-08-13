@@ -8,6 +8,14 @@
         "category": "General",
         "versions": [
             {
+                "version": "1.0.1.0",
+                "changelog": "1.0.1.0 Fix download button injection for Jellyfin 10.11: place the button in the main detail button row and stop depending on legacy api client helpers.\n1.0.0.0 Initial release",
+                "targetAbi": "10.11.0.0",
+                "sourceUrl": "https://github.com/ColeChiodo/jellyfin-plugin-audio-downloader/releases/download/v1.0.1.0/audio-downloader_1.0.1.0.zip",
+                "checksum": "eb494e8a9a5f68ca48155f51e74a96a0",
+                "timestamp": "2026-08-13T22:06:04Z"
+            },
+            {
                 "version": "1.0.0.0",
                 "changelog": "1.0.0.0 Initial release",
                 "targetAbi": "10.11.0.0",
