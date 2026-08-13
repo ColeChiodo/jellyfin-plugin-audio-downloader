@@ -195,12 +195,36 @@
             api_key: token
         });
 
-        var anchor = document.createElement('a');
-        anchor.href = url;
-        anchor.download = sanitizeName(item.Name) + '.' + (format === 'mp3' ? 'mp3' : 'm4a');
-        document.body.appendChild(anchor);
-        anchor.click();
-        document.body.removeChild(anchor);
+        log('info', 'downloading ' + url);
+        var headers = {};
+        if (token) {
+            headers['X-Emby-Token'] = token;
+        }
+
+        fetch(url, { headers: headers }).then(function (response) {
+            if (!response.ok) {
+                return response.text().then(function (body) {
+                    throw new Error('server returned ' + response.status + ': ' + (body || 'no body').slice(0, 300));
+                });
+            }
+
+            return response.blob();
+        }).then(function (blob) {
+            var objectUrl = URL.createObjectURL(blob);
+            var anchor = document.createElement('a');
+            anchor.href = objectUrl;
+            anchor.download = sanitizeName(item.Name) + '.' + (format === 'mp3' ? 'mp3' : 'm4a');
+            document.body.appendChild(anchor);
+            anchor.click();
+            setTimeout(function () {
+                URL.revokeObjectURL(objectUrl);
+            }, 10000);
+
+            document.body.removeChild(anchor);
+        }).catch(function (err) {
+            log('error', 'download failed: ' + (err && err.message));
+            toast('Download failed: ' + (err && err.message));
+        });
     }
 
     function closeDialog() {
@@ -334,14 +358,13 @@
         });
     }
 
-    function findButtonContainer() {
+    function findDetailContainer() {
         var candidates = [
             '.mainDetailButtons',
             '.detailPagePrimaryContent',
             '.detailPagePrimaryContainer',
             '.detailRibbon',
-            '#itemDetailPage',
-            '.headerRight'
+            '#itemDetailPage'
         ];
         for (var i = 0; i < candidates.length; i++) {
             var container = document.querySelector(candidates[i]);
@@ -404,7 +427,13 @@
         } catch (e) { /* noop */ }
     }
 
-    function validateAndAdd(itemId, container) {
+    var pendingItemId = null;
+
+    function validateAndAdd(itemId) {
+        if (pendingItemId === itemId) {
+            return;
+        }
+
         if (currentItemId === itemId && document.getElementById('audioDownloaderButton')) {
             return;
         }
@@ -414,22 +443,52 @@
             currentItemId = itemId;
         }
 
+        pendingItemId = itemId;
         getItem(itemId).then(function (item) {
+            pendingItemId = null;
+            if (getQueryParam('id') !== itemId) {
+                return;
+            }
+
             var type = item && item.Type;
             log('info', 'resolved item type: ' + type);
             if (VIDEO_TYPES.indexOf(type) >= 0) {
-                addButton(itemId, container);
+                addButton(itemId);
             } else {
                 log('info', 'item type ' + type + ' is not video, skipping button');
+                currentItemId = null;
             }
         }).catch(function (err) {
+            pendingItemId = null;
+            if (getQueryParam('id') !== itemId) {
+                return;
+            }
+
             log('warn', 'could not resolve item type (' + (err && err.message) + '), adding button optimistically');
-            addButton(itemId, container);
+            addButton(itemId);
         });
     }
 
-    function addButton(itemId, container) {
+    function addButton(itemId) {
         if (document.getElementById('audioDownloaderButton')) {
+            return;
+        }
+
+        var placement = findDetailContainer();
+        if (!placement && Date.now() - noDetailSince > 5000) {
+            var header = document.querySelector('.headerRight');
+            if (header) {
+                placement = { el: header, selector: '.headerRight' };
+            }
+        }
+
+        if (!placement) {
+            log('info', 'no button container available right now, will retry');
+            return;
+        }
+
+        if (!placement.el.isConnected) {
+            log('info', 'button container detached mid-render, will retry');
             return;
         }
 
@@ -439,7 +498,7 @@
         button.textContent = 'Download Audio';
         button.className = 'button-link emby-button';
 
-        if (container.selector === '.headerRight') {
+        if (placement.selector === '.headerRight') {
             button.style.cssText = 'margin-left:8px;';
         } else {
             button.style.cssText = 'margin-left:12px;';
@@ -449,9 +508,9 @@
             onDownloadClicked(itemId);
         });
 
-        container.el.appendChild(button);
+        placement.el.appendChild(button);
         currentItemId = itemId;
-        log('info', 'button added to "' + container.selector + '" for item ' + itemId);
+        log('info', 'button added to "' + placement.selector + '" for item ' + itemId);
     }
 
     function removeButton() {
@@ -467,6 +526,7 @@
     var lastHash = null;
     var lastNotFoundLog = 0;
     var topDumpedFor = null;
+    var noDetailSince = 0;
 
     function tick() {
         var hash = window.location.hash || '';
@@ -475,6 +535,8 @@
             log('info', 'route: "' + hash + '"');
             removeButton();
             currentItemId = null;
+            pendingItemId = null;
+            noDetailSince = 0;
         }
 
         var itemId = getQueryParam('id');
@@ -482,7 +544,20 @@
             return;
         }
 
-        var container = findButtonContainer();
+        var container = findDetailContainer();
+        if (!container) {
+            if (!noDetailSince) {
+                noDetailSince = Date.now();
+            }
+
+            if (Date.now() - noDetailSince > 5000) {
+                var header = document.querySelector('.headerRight');
+                if (header) {
+                    container = { el: header, selector: '.headerRight' };
+                }
+            }
+        }
+
         if (!container) {
             pollCount++;
             var now = Date.now();
@@ -500,6 +575,8 @@
             return;
         }
 
+        noDetailSince = 0;
+
         if (currentItemId !== itemId) {
             removeButton();
         }
@@ -509,7 +586,7 @@
             return;
         }
 
-        validateAndAdd(itemId, container);
+        validateAndAdd(itemId);
         pollCount = 0;
     }
 

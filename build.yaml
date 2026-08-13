@@ -1,7 +1,7 @@
 ---
 name: "Audio Downloader"
 guid: "a1d6f0e2-5c3b-4e8a-9f7d-2e4b8c1a9f34"
-version: "1.0.4.0"
+version: "1.0.5.0"
 targetAbi: "10.11.0.0"
 framework: "net9.0"
 overview: "Download a compressed audio track of a movie or show with intros, outros and dead air removed."
@@ -16,6 +16,11 @@ owner: "jellyfin"
 artifacts:
 - "Jellyfin.Plugin.AudioDownloader.dll"
 changelog: >-
+  1.0.5.0 Keep the download button after client navigation: re-query the detail
+  container after resolving the item (previously appended to a detached node
+  after React swapped the view, hiding the button). Download via fetch so the
+  server's error is reported instead of silently failing.
+
   1.0.4.0 Continuously observe the route and DOM instead of listening only for
   #/details routes: log every route change plus the top element classes on item
   pages so the real detail page structure is always visible.
