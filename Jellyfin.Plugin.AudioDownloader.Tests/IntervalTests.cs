@@ -77,7 +77,7 @@ public class IntervalTests
     {
         var graph = AudioProcessor.BuildFilterGraph(new[] { (1.0, 2.0), (3.5, 4.25) });
 
-        Assert.Equal("aselect='not(between(t,1,2)+between(t,3.5,4.25))',asetpts=N/SR/TB", graph);
+        Assert.Equal("aselect=not(between(t\\,1\\,2)+between(t\\,3.5\\,4.25)),asetpts=N/SR/TB", graph);
     }
 
     [Fact]
@@ -85,7 +85,7 @@ public class IntervalTests
     {
         var graph = AudioProcessor.BuildFilterGraph(new[] { (5.0, double.PositiveInfinity) });
 
-        Assert.Equal("aselect='not(gte(t,5))',asetpts=N/SR/TB", graph);
+        Assert.Equal("aselect=not(gte(t\\,5)),asetpts=N/SR/TB", graph);
     }
 
     [Fact]
@@ -93,7 +93,7 @@ public class IntervalTests
     {
         var graph = AudioProcessor.BuildFilterGraph(new[] { (0.5, 10.0) });
 
-        Assert.Equal("aselect='not(between(t,0.5,10))',asetpts=N/SR/TB", graph);
+        Assert.Equal("aselect=not(between(t\\,0.5\\,10)),asetpts=N/SR/TB", graph);
     }
 
     [Theory]

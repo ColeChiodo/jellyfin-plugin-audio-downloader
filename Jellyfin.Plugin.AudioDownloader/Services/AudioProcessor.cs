@@ -330,7 +330,10 @@ public sealed class AudioProcessor
             }
         };
 
-        _logger.LogDebug("Running silence detection: ffmpeg {Arguments}", ArgsToStringSafe(args));
+        _logger.LogInformation(
+            "Running silence detection: {Path} {Arguments}",
+            _mediaEncoder.EncoderPath,
+            ArgsToStringSafe(args));
 
         var exitCode = 0;
         using (process)
@@ -583,6 +586,11 @@ public sealed class AudioProcessor
         {
             try
             {
+                _logger.LogInformation(
+                    "Running ffmpeg: {Path} {Arguments}",
+                    ffmpegPath,
+                    ArgsToStringSafe(args));
+
                 process.Start();
                 process.BeginErrorReadLine();
                 await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
@@ -641,16 +649,16 @@ public sealed class AudioProcessor
         {
             if (double.IsInfinity(interval.End))
             {
-                terms.Add(string.Format(CultureInfo.InvariantCulture, "gte(t,{0:0.###})", interval.Start));
+                terms.Add(string.Format(CultureInfo.InvariantCulture, "gte(t\\,{0:0.###})", interval.Start));
             }
             else
             {
-                terms.Add(string.Format(CultureInfo.InvariantCulture, "between(t,{0:0.###},{1:0.###})", interval.Start, interval.End));
+                terms.Add(string.Format(CultureInfo.InvariantCulture, "between(t\\,{0:0.###}\\,{1:0.###})", interval.Start, interval.End));
             }
         }
 
         var expression = string.Join("+", terms);
-        return string.Format(CultureInfo.InvariantCulture, "aselect='not({0})',asetpts=N/SR/TB", expression);
+        return string.Format(CultureInfo.InvariantCulture, "aselect=not({0}),asetpts=N/SR/TB", expression);
     }
 
     internal static List<(double Start, double End)> MergeIntervals(IEnumerable<(double Start, double End)> intervals)
