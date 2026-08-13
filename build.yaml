@@ -1,16 +1,19 @@
 ---
-name: "Template"
-guid: "eb5d7894-8eef-4b36-aa6f-5d124e828ce1"
+name: "Audio Downloader"
+guid: "a1d6f0e2-5c3b-4e8a-9f7d-2e4b8c1a9f34"
 version: "1.0.0.0"
-targetAbi: "10.9.0.0"
-framework: "net8.0"
-overview: "Short description about your plugin"
+targetAbi: "10.11.0.0"
+framework: "net9.0"
+overview: "Download a compressed audio track of a movie or show with intros, outros and dead air removed."
 description: >
-  This is a longer description that can span more than one
-  line and include details about your plugin.
+  Adds a "Download Audio" button to the web client for movies, episodes, seasons
+  and series. The rendered track has detected intro, outro, commercial and preview
+  segments cut (via Jellyfin media segments as produced by the Intro Skipper plugin)
+  and long silent periods removed. Output can be MP3 or M4A/AAC and the audio track
+  can be chosen when multiple languages are present.
 category: "General"
 owner: "jellyfin"
 artifacts:
-- "Jellyfin.Plugin.Template.dll"
+- "Jellyfin.Plugin.AudioDownloader.dll"
 changelog: >
-  changelog
+  1.0.0.0 Initial release

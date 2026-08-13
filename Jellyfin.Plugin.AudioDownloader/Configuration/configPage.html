@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Audio Downloader</title>
+</head>
+<body>
+    <div id="AudioDownloaderConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-select,emby-checkbox">
+        <div data-role="content">
+            <div class="content-primary">
+                <form id="AudioDownloaderConfigForm">
+                    <h1>Audio Downloader</h1>
+
+                    <div class="section">
+                        <h2>Dead air removal</h2>
+                        <div class="inputContainer">
+                            <label class="inputLabel inputLabelUnfocused" for="SilenceDurationSeconds">Minimum silence length (seconds)</label>
+                            <input id="SilenceDurationSeconds" name="SilenceDurationSeconds" type="number" is="emby-input" min="0" step="0.1" />
+                            <div class="fieldDescription">Silence longer than this is treated as dead air and removed. Set to 0 to disable dead air removal.</div>
+                        </div>
+                        <div class="inputContainer">
+                            <label class="inputLabel inputLabelUnfocused" for="SilenceThresholdDb">Silence threshold (dB)</label>
+                            <input id="SilenceThresholdDb" name="SilenceThresholdDb" type="number" is="emby-input" min="-90" max="0" />
+                            <div class="fieldDescription">Audio level below this is considered silence. Typical values are around -45 dB.</div>
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <h2>Segments to remove</h2>
+                        <div class="checkboxContainer checkboxContainer-withDescription">
+                            <label class="emby-checkbox-label">
+                                <input id="IncludeIntros" name="IncludeIntros" type="checkbox" is="emby-checkbox" />
+                                <span>Intros</span>
+                            </label>
+                        </div>
+                        <div class="checkboxContainer checkboxContainer-withDescription">
+                            <label class="emby-checkbox-label">
+                                <input id="IncludeOutros" name="IncludeOutros" type="checkbox" is="emby-checkbox" />
+                                <span>Outros</span>
+                            </label>
+                        </div>
+                        <div class="checkboxContainer checkboxContainer-withDescription">
+                            <label class="emby-checkbox-label">
+                                <input id="IncludeCommercials" name="IncludeCommercials" type="checkbox" is="emby-checkbox" />
+                                <span>Commercials</span>
+                            </label>
+                        </div>
+                        <div class="checkboxContainer checkboxContainer-withDescription">
+                            <label class="emby-checkbox-label">
+                                <input id="IncludePreviews" name="IncludePreviews" type="checkbox" is="emby-checkbox" />
+                                <span>Previews</span>
+                            </label>
+                        </div>
+                        <div class="checkboxContainer checkboxContainer-withDescription">
+                            <label class="emby-checkbox-label">
+                                <input id="IncludeRecaps" name="IncludeRecaps" type="checkbox" is="emby-checkbox" />
+                                <span>Recaps</span>
+                            </label>
+                        </div>
+                        <div class="fieldDescription">Segment timestamps are read from Jellyfin media segments, as produced by the Intro Skipper (Intr0) plugin.</div>
+                    </div>
+
+                    <div class="section">
+                        <h2>Output</h2>
+                        <div class="selectContainer">
+                            <label class="selectLabel" for="DefaultFormat">Default format</label>
+                            <select is="emby-select" id="DefaultFormat" name="DefaultFormat" class="emby-select-withcolor emby-select">
+                                <option value="Mpeg3">MP3</option>
+                                <option value="M4A">M4A (AAC)</option>
+                            </select>
+                        </div>
+                        <div class="inputContainer">
+                            <label class="inputLabel inputLabelUnfocused" for="Mp3Bitrate">MP3 bitrate (kbps)</label>
+                            <input id="Mp3Bitrate" name="Mp3Bitrate" type="number" is="emby-input" min="64" max="320" />
+                        </div>
+                        <div class="inputContainer">
+                            <label class="inputLabel inputLabelUnfocused" for="AacBitrate">AAC bitrate (kbps)</label>
+                            <input id="AacBitrate" name="AacBitrate" type="number" is="emby-input" min="64" max="512" />
+                        </div>
+                        <div class="inputContainer">
+                            <label class="inputLabel inputLabelUnfocused" for="MaxChannels">Maximum output channels</label>
+                            <input id="MaxChannels" name="MaxChannels" type="number" is="emby-input" min="1" max="8" />
+                            <div class="fieldDescription">Sources with more channels are downmixed. MP3 output is always stereo.</div>
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <h2>Audio track selection</h2>
+                        <div class="inputContainer">
+                            <label class="inputLabel inputLabelUnfocused" for="PreferredAudioLanguage">Preferred audio language (ISO code)</label>
+                            <input id="PreferredAudioLanguage" name="PreferredAudioLanguage" type="text" is="emby-input" />
+                            <div class="fieldDescription">Optional. Used to auto-select a language when the chosen track index is unavailable, e.g. "eng".</div>
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <h2>Access</h2>
+                        <div class="checkboxContainer checkboxContainer-withDescription">
+                            <label class="emby-checkbox-label">
+                                <input id="AdminOnly" name="AdminOnly" type="checkbox" is="emby-checkbox" />
+                                <span>Only allow administrators to download audio</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div>
+                        <button is="emby-button" type="submit" class="raised button-submit block emby-button">
+                            <span>Save</span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        <script type="text/javascript">
+            var AudioDownloaderConfig = {
+                pluginUniqueId: 'a1d6f0e2-5c3b-4e8a-9f7d-2e4b8c1a9f34'
+            };
+
+            function loadConfig() {
+                Dashboard.showLoadingMsg();
+                ApiClient.getPluginConfiguration(AudioDownloaderConfig.pluginUniqueId).then(function (config) {
+                    document.querySelector('#SilenceDurationSeconds').value = config.SilenceDurationSeconds;
+                    document.querySelector('#SilenceThresholdDb').value = config.SilenceThresholdDb;
+                    document.querySelector('#IncludeIntros').checked = config.IncludeIntros;
+                    document.querySelector('#IncludeOutros').checked = config.IncludeOutros;
+                    document.querySelector('#IncludeCommercials').checked = config.IncludeCommercials;
+                    document.querySelector('#IncludePreviews').checked = config.IncludePreviews;
+                    document.querySelector('#IncludeRecaps').checked = config.IncludeRecaps;
+                    document.querySelector('#DefaultFormat').value = config.DefaultFormat;
+                    document.querySelector('#Mp3Bitrate').value = config.Mp3Bitrate;
+                    document.querySelector('#AacBitrate').value = config.AacBitrate;
+                    document.querySelector('#MaxChannels').value = config.MaxChannels;
+                    document.querySelector('#PreferredAudioLanguage').value = config.PreferredAudioLanguage;
+                    document.querySelector('#AdminOnly').checked = config.AdminOnly;
+                    Dashboard.hideLoadingMsg();
+                });
+            }
+
+            document.querySelector('#AudioDownloaderConfigPage')
+                .addEventListener('pageshow', loadConfig);
+
+            document.querySelector('#AudioDownloaderConfigForm')
+                .addEventListener('submit', function (e) {
+                    Dashboard.showLoadingMsg();
+                    ApiClient.getPluginConfiguration(AudioDownloaderConfig.pluginUniqueId).then(function (config) {
+                        config.SilenceDurationSeconds = document.querySelector('#SilenceDurationSeconds').value;
+                        config.SilenceThresholdDb = document.querySelector('#SilenceThresholdDb').value;
+                        config.IncludeIntros = document.querySelector('#IncludeIntros').checked;
+                        config.IncludeOutros = document.querySelector('#IncludeOutros').checked;
+                        config.IncludeCommercials = document.querySelector('#IncludeCommercials').checked;
+                        config.IncludePreviews = document.querySelector('#IncludePreviews').checked;
+                        config.IncludeRecaps = document.querySelector('#IncludeRecaps').checked;
+                        config.DefaultFormat = document.querySelector('#DefaultFormat').value;
+                        config.Mp3Bitrate = document.querySelector('#Mp3Bitrate').value;
+                        config.AacBitrate = document.querySelector('#AacBitrate').value;
+                        config.MaxChannels = document.querySelector('#MaxChannels').value;
+                        config.PreferredAudioLanguage = document.querySelector('#PreferredAudioLanguage').value;
+                        config.AdminOnly = document.querySelector('#AdminOnly').checked;
+                        ApiClient.updatePluginConfiguration(AudioDownloaderConfig.pluginUniqueId, config).then(function (result) {
+                            Dashboard.processPluginConfigurationUpdateResult(result);
+                        });
+                    });
+
+                    e.preventDefault();
+                    return false;
+                });
+        </script>
+    </div>
+</body>
+</html>
