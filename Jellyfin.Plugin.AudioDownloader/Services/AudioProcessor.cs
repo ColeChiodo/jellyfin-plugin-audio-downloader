@@ -598,6 +598,11 @@ public sealed class AudioProcessor
 
         if (exitCode != 0)
         {
+            _logger.LogWarning(
+                "ffmpeg exited with code {ExitCode}: {Log}",
+                exitCode,
+                error.ToString());
+
             throw new InvalidOperationException(
                 string.Format(
                     CultureInfo.InvariantCulture,
