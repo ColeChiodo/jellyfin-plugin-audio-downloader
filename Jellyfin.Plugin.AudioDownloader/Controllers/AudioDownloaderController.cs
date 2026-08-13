@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Plugin.AudioDownloader.Configuration;
 using Jellyfin.Plugin.AudioDownloader.Models;
@@ -23,16 +24,19 @@ namespace Jellyfin.Plugin.AudioDownloader.Controllers;
 public class AudioDownloaderController : ControllerBase
 {
     private readonly AudioProcessor _audioProcessor;
+    private readonly DownloadJobService _jobService;
     private readonly ILibraryManager _libraryManager;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="AudioDownloaderController"/> class.
     /// </summary>
     /// <param name="audioProcessor">The audio processing service.</param>
+    /// <param name="jobService">The download job tracking service.</param>
     /// <param name="libraryManager">The library manager.</param>
-    public AudioDownloaderController(AudioProcessor audioProcessor, ILibraryManager libraryManager)
+    public AudioDownloaderController(AudioProcessor audioProcessor, DownloadJobService jobService, ILibraryManager libraryManager)
     {
         _audioProcessor = audioProcessor;
+        _jobService = jobService;
         _libraryManager = libraryManager;
     }
 
@@ -79,14 +83,16 @@ public class AudioDownloaderController : ControllerBase
     }
 
     /// <summary>
-    /// Renders and downloads the compressed audio track for an item.
+    /// Starts rendering the compressed audio track for an item. The response returns a job
+    /// identifier; poll <see cref="GetDownloadProgress"/> until it reports Ready, then
+    /// fetch <see cref="DownloadPreparedFile"/>.
     /// </summary>
     /// <param name="itemId">The item id.</param>
     /// <param name="stream">The audio stream index to use, or <c>-1</c> for the default.</param>
     /// <param name="format">The output format, <c>mp3</c> or <c>m4a</c>.</param>
-    /// <returns>The rendered audio file.</returns>
-    [HttpGet("download")]
-    public async Task<ActionResult> DownloadAudio(
+    /// <returns>A job identifier.</returns>
+    [HttpGet("prepare")]
+    public async Task<ActionResult> PrepareDownload(
         [FromQuery] Guid itemId,
         [FromQuery] int? stream = null,
         [FromQuery] string? format = null)
@@ -94,6 +100,11 @@ public class AudioDownloaderController : ControllerBase
         if (!AssertUserAllowed(out var forbidden))
         {
             return forbidden;
+        }
+
+        if (_jobService.PreparingCount() >= 2)
+        {
+            return StatusCode(429, "Too many audio downloads are already being prepared.");
         }
 
         var item = _libraryManager.GetItemById<BaseItem>(itemId);
@@ -110,28 +121,79 @@ public class AudioDownloaderController : ControllerBase
             return BadRequest("No playable items found.");
         }
 
-        AudioDownloadResult result;
+        var jobId = _jobService.Create();
+        var progress = new Progress<AudioProgressInfo>(info => _jobService.Update(jobId, info));
+
         try
         {
-            result = await _audioProcessor
-                .BuildAudioFileAsync(items, stream ?? -1, outputFormat, config, HttpContext.RequestAborted)
+            var result = await _audioProcessor
+                .BuildAudioFileAsync(items, stream ?? -1, outputFormat, config, CancellationToken.None, progress)
                 .ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (HttpContext.RequestAborted.IsCancellationRequested)
-        {
-            return StatusCode(499, "Download cancelled.");
+
+            var downloadName = AudioProcessor.BuildDownloadFileName(item);
+            _jobService.Complete(jobId, result.FilePath, result.TempDirectory, downloadName);
+            return Ok(new { jobId });
         }
         catch (InvalidOperationException ex)
         {
+            _jobService.Fail(jobId, ex.Message);
             return BadRequest(ex.Message);
         }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _jobService.Fail(jobId, ex.ToString());
+            return StatusCode(500, ex.Message);
+        }
+    }
 
-        var extension = outputFormat == AudioFormat.Mpeg3 ? "mp3" : "m4a";
-        var contentType = outputFormat == AudioFormat.Mpeg3 ? "audio/mpeg" : "audio/mp4";
-        var title = SanitizeFileName(item.Name) ?? $"audio-{item.Id.ToString("N", CultureInfo.InvariantCulture)}";
+    /// <summary>
+    /// Gets the progress of a download job.
+    /// </summary>
+    /// <param name="jobId">The job id from <see cref="PrepareDownload"/>.</param>
+    /// <returns>The progress snapshot.</returns>
+    [HttpGet("prepare/{jobId:guid}")]
+    public ActionResult GetDownloadProgress(Guid jobId)
+    {
+        var snapshot = _jobService.GetProgress(jobId);
+        if (snapshot is null)
+        {
+            return NotFound();
+        }
+
+        return Ok(snapshot);
+    }
+
+    /// <summary>
+    /// Streams the finished audio file for a completed download job.
+    /// </summary>
+    /// <param name="jobId">The job id from <see cref="PrepareDownload"/>.</param>
+    /// <returns>The rendered audio file.</returns>
+    [HttpGet("download/{jobId:guid}")]
+    public ActionResult DownloadPreparedFile(Guid jobId)
+    {
+        if (!AssertUserAllowed(out var forbidden))
+        {
+            return forbidden;
+        }
+
+        // CA3003: jobId only selects an entry created and owned by the job service; the file
+        // path below originates from our internal temp store, never from user input.
+#pragma warning disable CA3003 // Review code for file path injection vulnerabilities
+        if (!_jobService.TryClaimReadyJob(jobId, out var outputPath, out var tempDirectory, out var downloadName))
+        {
+            return StatusCode(202, "The audio is still being prepared.");
+        }
+
+        if (string.IsNullOrWhiteSpace(outputPath) || !System.IO.File.Exists(outputPath))
+        {
+            return StatusCode(202, "The audio is still being prepared.");
+        }
+
+        var extension = Path.GetExtension(outputPath).TrimStart('.');
+        var contentType = extension.Equals("mp3", StringComparison.OrdinalIgnoreCase) ? "audio/mpeg" : "audio/mp4";
 
         var fileStream = new FileStream(
-            result.FilePath,
+            outputPath,
             FileMode.Open,
             FileAccess.Read,
             FileShare.Read,
@@ -140,11 +202,12 @@ public class AudioDownloaderController : ControllerBase
 
         // Dispose order is LIFO: the temp directory cleanup is registered first so the file
         // stream is closed (and the file unlinked via DeleteOnClose) before the directory is removed.
-        HttpContext.Response.RegisterForDispose(new TempDirectoryCleanup(result.TempDirectory));
+        HttpContext.Response.RegisterForDispose(new TempDirectoryCleanup(tempDirectory));
+#pragma warning restore CA3003
         return File(
             fileStream,
             contentType,
-            string.Format(CultureInfo.InvariantCulture, "{0}.{1}", title, extension));
+            string.Format(CultureInfo.InvariantCulture, "{0}.{1}", downloadName ?? "audio", extension));
     }
 
     private bool AssertUserAllowed(out ActionResult forbidden)
@@ -174,24 +237,11 @@ public class AudioDownloaderController : ControllerBase
         };
     }
 
-    private static string? SanitizeFileName(string? name)
-    {
-        if (string.IsNullOrWhiteSpace(name))
-        {
-            return null;
-        }
-
-        var invalid = Path.GetInvalidFileNameChars();
-        var chars = name.Select(c => invalid.Contains(c) ? '_' : c).ToArray();
-        var sanitized = new string(chars).Trim();
-        return string.IsNullOrWhiteSpace(sanitized) ? null : sanitized;
-    }
-
     private sealed class TempDirectoryCleanup : IDisposable
     {
-        private readonly string _path;
+        private readonly string? _path;
 
-        public TempDirectoryCleanup(string path)
+        public TempDirectoryCleanup(string? path)
         {
             _path = path;
         }
@@ -200,7 +250,7 @@ public class AudioDownloaderController : ControllerBase
         {
             try
             {
-                if (Directory.Exists(_path))
+                if (!string.IsNullOrWhiteSpace(_path) && Directory.Exists(_path))
                 {
                     Directory.Delete(_path, true);
                 }

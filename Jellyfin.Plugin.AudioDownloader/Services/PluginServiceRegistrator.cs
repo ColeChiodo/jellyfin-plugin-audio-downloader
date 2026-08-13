@@ -15,6 +15,7 @@ public sealed class PluginServiceRegistrator : IPluginServiceRegistrator
     public void RegisterServices(IServiceCollection serviceCollection, IServerApplicationHost applicationHost)
     {
         serviceCollection.AddSingleton<AudioProcessor>();
+        serviceCollection.AddSingleton<DownloadJobService>();
         serviceCollection.AddSingleton<IHostedService, WebBootstrapService>();
     }
 }

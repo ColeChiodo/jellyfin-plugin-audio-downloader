@@ -186,21 +186,159 @@
         return (name || 'audio').replace(/[\\/:*?"<>|]/g, '_');
     }
 
+    function buildDownloadName(item, format) {
+        var parts = [];
+        if (item.SeriesName) {
+            parts.push(String(item.SeriesName).trim());
+        }
+
+        var season = item.ParentIndexNumber;
+        var episode = item.IndexNumber;
+        if (typeof season === 'number' && typeof episode === 'number') {
+            parts.push('S' + String(season).padStart(2, '0') + 'E' + String(episode).padStart(2, '0'));
+        }
+
+        if (item.Name) {
+            parts.push(String(item.Name).trim());
+        }
+
+        var base = sanitizeName(parts.join('-')) || 'audio';
+        return base + '.' + (format === 'mp3' ? 'mp3' : 'm4a');
+    }
+
+    function buildProgressOverlay() {
+        var overlay = document.createElement('div');
+        overlay.id = 'audioDownloaderProgressOverlay';
+        overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.55);z-index:99999;display:flex;align-items:center;justify-content:center;';
+
+        var card = document.createElement('div');
+        card.style.cssText = 'background:#1b1b1b;color:#ddd;padding:24px;border-radius:8px;min-width:340px;max-width:480px;box-shadow:0 6px 24px rgba(0,0,0,0.5);';
+
+        var status = document.createElement('div');
+        status.id = 'audioDownloaderProgressText';
+        status.textContent = 'Preparing...';
+        status.style.cssText = 'margin:0 0 12px;color:#fff;';
+
+        var barTrack = document.createElement('div');
+        barTrack.style.cssText = 'background:#333;border-radius:4px;height:10px;overflow:hidden;';
+
+        var barFill = document.createElement('div');
+        barFill.id = 'audioDownloaderProgressBar';
+        barFill.style.cssText = 'background:#52b54b;height:100%;width:0%;transition:width 0.25s ease;';
+
+        barTrack.appendChild(barFill);
+        card.appendChild(status);
+        card.appendChild(barTrack);
+        overlay.appendChild(card);
+
+        overlay._status = status;
+        overlay._barFill = barFill;
+        return overlay;
+    }
+
+    function updateProgressOverlay(overlay, phase, fraction) {
+        var pct = Math.max(0, Math.min(100, Math.round((fraction || 0) * 100)));
+        if (overlay._status) {
+            overlay._status.textContent = (phase || 'Working') + ' - ' + pct + '%';
+        }
+
+        if (overlay._barFill) {
+            overlay._barFill.style.width = pct + '%';
+        }
+    }
+
+    function removeProgressOverlay(overlay) {
+        if (overlay && overlay.parentNode) {
+            overlay.parentNode.removeChild(overlay);
+        }
+    }
+
     function startDownload(item, streamIndex, format) {
         var token = getToken(getApiClient());
-        var url = buildUrl('AudioDownloader/download', {
-            itemId: item.Id,
-            stream: streamIndex,
-            format: format,
-            api_key: token
-        });
-
-        log('info', 'downloading ' + url);
         var headers = {};
         if (token) {
             headers['X-Emby-Token'] = token;
         }
 
+        var overlay = buildProgressOverlay();
+        document.body.appendChild(overlay);
+
+        var url = buildUrl('AudioDownloader/prepare', {
+            itemId: item.Id,
+            stream: streamIndex,
+            format: format
+        });
+
+        fetch(url, { headers: headers }).then(function (response) {
+            if (!response.ok) {
+                return response.text().then(function (body) {
+                    throw new Error((body || 'prepare failed').trim().slice(0, 20000));
+                });
+            }
+
+            return response.json();
+        }).then(function (json) {
+            if (!json || !json.jobId) {
+                throw new Error('server did not return a job id');
+            }
+
+            pollJob(overlay, item, format, json.jobId, token);
+        }).catch(function (err) {
+            removeProgressOverlay(overlay);
+            log('error', 'prepare failed: ' + (err && err.message));
+            toast('Download failed: ' + (err && err.message));
+        });
+    }
+
+    function pollJob(overlay, item, format, jobId, token) {
+        var headers = {};
+        if (token) {
+            headers['X-Emby-Token'] = token;
+        }
+
+        var url = buildUrl('AudioDownloader/prepare/' + jobId);
+        fetch(url, { headers: headers }).then(function (response) {
+            if (!response.ok) {
+                throw new Error('progress poll returned ' + response.status);
+            }
+
+            return response.json();
+        }).then(function (progress) {
+            if (!progress) {
+                throw new Error('server returned no progress');
+            }
+
+            if (progress.State === 'Failed') {
+                removeProgressOverlay(overlay);
+                var failure = progress.Error || 'unknown error';
+                log('error', 'job failed: ' + failure);
+                toast('Download failed: ' + failure);
+                return;
+            }
+
+            if (progress.State === 'Ready') {
+                finishDownload(overlay, item, format, jobId, token);
+                return;
+            }
+
+            updateProgressOverlay(overlay, progress.Phase, progress.Fraction);
+            setTimeout(function () {
+                pollJob(overlay, item, format, jobId, token);
+            }, 500);
+        }).catch(function (err) {
+            removeProgressOverlay(overlay);
+            log('error', 'progress poll failed: ' + (err && err.message));
+            toast('Download failed: ' + (err && err.message));
+        });
+    }
+
+    function finishDownload(overlay, item, format, jobId, token) {
+        var headers = {};
+        if (token) {
+            headers['X-Emby-Token'] = token;
+        }
+
+        var url = buildUrl('AudioDownloader/download/' + jobId);
         fetch(url, { headers: headers }).then(function (response) {
             if (!response.ok) {
                 return response.text().then(function (body) {
@@ -210,10 +348,11 @@
 
             return response.blob();
         }).then(function (blob) {
+            removeProgressOverlay(overlay);
             var objectUrl = URL.createObjectURL(blob);
             var anchor = document.createElement('a');
             anchor.href = objectUrl;
-            anchor.download = sanitizeName(item.Name) + '.' + (format === 'mp3' ? 'mp3' : 'm4a');
+            anchor.download = buildDownloadName(item, format);
             document.body.appendChild(anchor);
             anchor.click();
             setTimeout(function () {
@@ -221,7 +360,9 @@
             }, 10000);
 
             document.body.removeChild(anchor);
+            log('info', 'download complete');
         }).catch(function (err) {
+            removeProgressOverlay(overlay);
             log('error', 'download failed: ' + (err && err.message));
             toast('Download failed: ' + (err && err.message));
         });

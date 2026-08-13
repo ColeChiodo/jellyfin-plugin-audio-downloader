@@ -151,13 +151,15 @@ public sealed class AudioProcessor
     /// <param name="format">The output audio format.</param>
     /// <param name="config">The plugin configuration.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
+    /// <param name="progress">The optional progress reporter.</param>
     /// <returns>A <see cref="AudioDownloadResult"/> describing the rendered file.</returns>
     public async Task<AudioDownloadResult> BuildAudioFileAsync(
         IReadOnlyList<BaseItem> items,
         int audioStreamIndex,
         AudioFormat format,
         PluginConfiguration config,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IProgress<AudioProgressInfo>? progress = null)
     {
         var workDir = Path.Combine(_applicationPaths.TempDirectory, "audiodownloader", Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture));
         Directory.CreateDirectory(workDir);
@@ -169,6 +171,8 @@ public sealed class AudioProcessor
             var extension = format == AudioFormat.Mpeg3 ? "mp3" : "m4a";
             var segmentFiles = new List<string>();
             var targetChannels = 2;
+            var totalSeconds = items.Sum(GetRuntimeSeconds);
+            var completedSeconds = 0.0;
 
             for (var i = 0; i < items.Count; i++)
             {
@@ -202,12 +206,29 @@ public sealed class AudioProcessor
                     targetChannels = ComputeTargetChannels(audioStream.Channels, format, config.MaxChannels);
                 }
 
+                ReportProgress(progress, "Scanning", completedSeconds, totalSeconds);
+
                 var removedIntervals = await BuildRemovedIntervalsAsync(item, config, path, audioPosition, cancellationToken).ConfigureAwait(false);
 
                 var segmentFile = Path.Combine(workDir, string.Format(CultureInfo.InvariantCulture, "seg_{0}.{1}", i, extension));
-                await EncodeSegmentAsync(path, audioPosition, removedIntervals, targetChannels, format, config, segmentFile, cancellationToken).ConfigureAwait(false);
+                var itemSeconds = GetRuntimeSeconds(item);
+                await EncodeSegmentAsync(
+                    path,
+                    audioPosition,
+                    removedIntervals,
+                    targetChannels,
+                    format,
+                    config,
+                    segmentFile,
+                    cancellationToken,
+                    outSeconds =>
+                    {
+                        var fraction = totalSeconds > 0 ? (completedSeconds + Math.Min(outSeconds, itemSeconds)) / totalSeconds : 0;
+                        ReportProgress(progress, "Encoding", fraction);
+                    }).ConfigureAwait(false);
 
                 segmentFiles.Add(segmentFile);
+                completedSeconds += itemSeconds;
             }
 
             if (segmentFiles.Count == 0)
@@ -404,7 +425,8 @@ public sealed class AudioProcessor
         AudioFormat format,
         PluginConfiguration config,
         string outputFile,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Action<double>? onProgress = null)
     {
         var args = new List<string>
         {
@@ -451,9 +473,16 @@ public sealed class AudioProcessor
             args.Add("+faststart");
         }
 
+        if (onProgress is not null)
+        {
+            args.Add("-nostats");
+            args.Add("-progress");
+            args.Add("pipe:1");
+        }
+
         args.Add(outputFile);
 
-        await RunAsync(_mediaEncoder.EncoderPath, args, cancellationToken).ConfigureAwait(false);
+        await RunAsync(_mediaEncoder.EncoderPath, args, cancellationToken, onProgress).ConfigureAwait(false);
     }
 
     private async Task ConcatAsync(
@@ -568,9 +597,9 @@ public sealed class AudioProcessor
         }
     }
 
-    private async Task RunAsync(string ffmpegPath, IReadOnlyList<string> args, CancellationToken cancellationToken)
+    private async Task RunAsync(string ffmpegPath, IReadOnlyList<string> args, CancellationToken cancellationToken, Action<double>? onProgress = null)
     {
-        var process = CreateProcess(ffmpegPath, args);
+        var process = CreateProcess(ffmpegPath, args, onProgress is not null);
         var error = new StringBuilder();
 
         process.ErrorDataReceived += (_, e) =>
@@ -580,6 +609,17 @@ public sealed class AudioProcessor
                 error.AppendLine(e.Data);
             }
         };
+
+        if (onProgress is not null)
+        {
+            process.OutputDataReceived += (_, e) =>
+            {
+                if (e.Data is not null && TryParseProgressSeconds(e.Data, out var seconds))
+                {
+                    onProgress?.Invoke(seconds);
+                }
+            };
+        }
 
         var exitCode = 0;
         using (process)
@@ -592,6 +632,12 @@ public sealed class AudioProcessor
                     ArgsToStringSafe(args));
 
                 process.Start();
+
+                if (onProgress is not null)
+                {
+                    process.BeginOutputReadLine();
+                }
+
                 process.BeginErrorReadLine();
                 await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
             }
@@ -620,7 +666,7 @@ public sealed class AudioProcessor
         }
     }
 
-    private static Process CreateProcess(string ffmpegPath, IReadOnlyList<string> args)
+    private static Process CreateProcess(string ffmpegPath, IReadOnlyList<string> args, bool redirectOutput = false)
     {
         var process = new Process
         {
@@ -629,7 +675,7 @@ public sealed class AudioProcessor
                 FileName = string.IsNullOrWhiteSpace(ffmpegPath) ? "ffmpeg" : ffmpegPath,
                 UseShellExecute = false,
                 CreateNoWindow = true,
-                RedirectStandardOutput = false,
+                RedirectStandardOutput = redirectOutput,
                 RedirectStandardError = true
             }
         };
@@ -640,6 +686,29 @@ public sealed class AudioProcessor
         }
 
         return process;
+    }
+
+    private static bool TryParseProgressSeconds(string line, out double seconds)
+    {
+        seconds = 0;
+        if (line.StartsWith("out_time_us=", StringComparison.Ordinal))
+        {
+            if (double.TryParse(line.AsSpan(12), NumberStyles.Float, CultureInfo.InvariantCulture, out var micros))
+            {
+                seconds = micros / 1_000_000.0;
+                return true;
+            }
+        }
+        else if (line.StartsWith("out_time_ms=", StringComparison.Ordinal))
+        {
+            if (double.TryParse(line.AsSpan(12), NumberStyles.Float, CultureInfo.InvariantCulture, out var millis))
+            {
+                seconds = millis / 1000.0;
+                return true;
+            }
+        }
+
+        return false;
     }
 
     internal static string BuildFilterGraph(IReadOnlyList<(double Start, double End)> removedIntervals)
@@ -819,6 +888,73 @@ public sealed class AudioProcessor
     {
         var source = GetFirstMediaSource(item);
         return string.IsNullOrWhiteSpace(source?.Path) ? null : source!.Path;
+    }
+
+    private static double GetRuntimeSeconds(BaseItem item)
+    {
+        var source = GetFirstMediaSource(item);
+        if (source?.RunTimeTicks is { } ticks && ticks > 0)
+        {
+            return ticks / (double)TimeSpan.TicksPerSecond;
+        }
+
+        return 0;
+    }
+
+    private static void ReportProgress(IProgress<AudioProgressInfo>? progress, string phase, double seconds, double totalSeconds)
+    {
+        progress?.Report(new AudioProgressInfo(
+            phase,
+            totalSeconds > 0 ? Math.Clamp(seconds / totalSeconds, 0, 0.99) : 0));
+    }
+
+    private static void ReportProgress(IProgress<AudioProgressInfo>? progress, string phase, double fraction)
+    {
+        progress?.Report(new AudioProgressInfo(phase, Math.Clamp(fraction, 0, 0.99)));
+    }
+
+    internal static string BuildDownloadFileName(BaseItem item)
+    {
+        if (item is Episode episode)
+        {
+            var parts = new List<string>();
+            if (!string.IsNullOrWhiteSpace(episode.SeriesName))
+            {
+                parts.Add(episode.SeriesName);
+            }
+
+            if (episode.AiredSeasonNumber is { } season && episode.IndexNumber is { } number)
+            {
+                parts.Add(string.Format(CultureInfo.InvariantCulture, "S{0:00}E{1:00}", season, number));
+            }
+
+            if (!string.IsNullOrWhiteSpace(episode.Name))
+            {
+                parts.Add(episode.Name);
+            }
+
+            return SanitizeFileName(string.Join("-", parts)) ?? AudioIdFallback(item.Id);
+        }
+
+        return SanitizeFileName(item.Name) ?? AudioIdFallback(item.Id);
+    }
+
+    internal static string? SanitizeFileName(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return null;
+        }
+
+        var invalid = Path.GetInvalidFileNameChars();
+        var chars = name.Select(c => invalid.Contains(c) ? '_' : c).ToArray();
+        var sanitized = new string(chars).Trim();
+        return string.IsNullOrWhiteSpace(sanitized) ? null : sanitized;
+    }
+
+    private static string AudioIdFallback(Guid id)
+    {
+        return string.Format(CultureInfo.InvariantCulture, "audio-{0:N}", id);
     }
 
     internal static MediaSourceInfo? GetFirstMediaSource(BaseItem item)
