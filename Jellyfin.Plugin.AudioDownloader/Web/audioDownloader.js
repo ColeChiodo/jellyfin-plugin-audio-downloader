@@ -12,10 +12,8 @@
             var line = '[AudioDownloader] ' + message;
             if (level === 'error') {
                 console.error(line);
-            } else if (level === 'warn') {
-                console.warn(line);
             } else {
-                console.info(line);
+                console.warn(line);
             }
         } catch (e) { /* noop */ }
     }

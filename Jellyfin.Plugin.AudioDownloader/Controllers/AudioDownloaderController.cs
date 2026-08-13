@@ -50,6 +50,8 @@ public class AudioDownloaderController : ControllerBase
             return NotFound();
         }
 
+        HttpContext.Response.Headers.CacheControl = "no-store, no-cache, must-revalidate";
+        HttpContext.Response.Headers.Pragma = "no-cache";
         return File(stream, "application/javascript");
     }
 

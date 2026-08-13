@@ -3,3 +3,7 @@ obj/
 .vs/
 .idea/
 artifacts
+
+# Local tooling/build dirs
+.venv/
+repo/

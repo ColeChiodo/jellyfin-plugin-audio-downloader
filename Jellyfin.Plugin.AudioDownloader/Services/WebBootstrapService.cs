@@ -14,7 +14,7 @@ namespace Jellyfin.Plugin.AudioDownloader.Services;
 /// </summary>
 public sealed class WebBootstrapService : IHostedService
 {
-    private const string ScriptTag = "<script id=\"audio-downloader\" src=\"../../AudioDownloader/script\" defer></script>";
+    private const string ScriptId = "audio-downloader";
 
     private readonly IApplicationPaths _applicationPaths;
     private readonly ILogger<WebBootstrapService> _logger;
@@ -28,6 +28,12 @@ public sealed class WebBootstrapService : IHostedService
     {
         _applicationPaths = applicationPaths;
         _logger = logger;
+    }
+
+    private static string BuildScriptTag()
+    {
+        var version = Plugin.Instance?.Version?.ToString() ?? "0.0.0.0";
+        return $"<script id=\"{ScriptId}\" src=\"../../AudioDownloader/script?v={version}\" defer></script>";
     }
 
     /// <inheritdoc />
@@ -44,24 +50,31 @@ public sealed class WebBootstrapService : IHostedService
 
         try
         {
+            var scriptTag = BuildScriptTag();
             var content = await File.ReadAllTextAsync(indexPath, cancellationToken).ConfigureAwait(false);
-            if (content.Contains(ScriptTag, StringComparison.Ordinal))
+            var updated = content;
+
+            if (!ReplaceScriptTag(ref updated, scriptTag))
             {
+                var bodyIndex = content.LastIndexOf("</body>", StringComparison.OrdinalIgnoreCase);
+                if (bodyIndex < 0)
+                {
+                    _logger.LogWarning(
+                        "Could not locate </body> in {Path}, skipping script injection",
+                        indexPath);
+                    return;
+                }
+
+                updated = content.Insert(bodyIndex, scriptTag + Environment.NewLine);
+            }
+
+            if (string.Equals(updated, content, StringComparison.Ordinal))
+            {
+                _logger.LogDebug("Audio downloader script already present in {Path}", indexPath);
                 return;
             }
 
-            var bodyIndex = content.LastIndexOf("</body>", StringComparison.OrdinalIgnoreCase);
-            if (bodyIndex < 0)
-            {
-                _logger.LogWarning(
-                    "Could not locate </body> in {Path}, skipping script injection",
-                    indexPath);
-                return;
-            }
-
-            var updated = content.Insert(bodyIndex, ScriptTag + Environment.NewLine);
             await File.WriteAllTextAsync(indexPath, updated, cancellationToken).ConfigureAwait(false);
-
             _logger.LogInformation("Injected audio downloader script into {Path}", indexPath);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -71,6 +84,27 @@ public sealed class WebBootstrapService : IHostedService
                 "Failed to inject the audio downloader script into {Path}. In restricted environments the web directory may need write access.",
                 indexPath);
         }
+    }
+
+    private static bool ReplaceScriptTag(ref string content, string scriptTag)
+    {
+        var openMarker = $"<script id=\"{ScriptId}\"";
+        const string closeMarker = "</script>";
+        var start = content.IndexOf(openMarker, StringComparison.Ordinal);
+        if (start < 0)
+        {
+            return false;
+        }
+
+        var end = content.IndexOf(closeMarker, start, StringComparison.Ordinal);
+        if (end < 0)
+        {
+            return false;
+        }
+
+        end += closeMarker.Length;
+        content = content.Remove(start, end - start).Insert(start, scriptTag);
+        return true;
     }
 
     /// <inheritdoc />
