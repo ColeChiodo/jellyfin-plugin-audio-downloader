@@ -8,6 +8,14 @@
         "category": "General",
         "versions": [
             {
+                "version": "1.0.5.0",
+                "changelog": "1.0.5.0 Keep the download button after client navigation: re-query the detail container after resolving the item (previously appended to a detached node after React swapped the view, hiding the button). Download via fetch so the server's error is reported instead of silently failing.\n1.0.4.0 Continuously observe the route and DOM instead of listening only for #/details routes: log every route change plus the top element classes on item pages so the real detail page structure is always visible.\n1.0.3.0 Make button placement adaptive: search several detail-page containers with a header fallback, re-check during client re-renders, and log a DOM probe so the active container can be identified.\n1.0.2.0 Bypass browser/service worker caching of the client script: add a version query to the injected tag and no-store cache headers.\n1.0.1.0 Fix download button injection for Jellyfin 10.11: place the button in the main detail button row and stop depending on legacy api client helpers.\n1.0.0.0 Initial release",
+                "targetAbi": "10.11.0.0",
+                "sourceUrl": "https://github.com/ColeChiodo/jellyfin-plugin-audio-downloader/releases/download/v1.0.5.0/audio-downloader_1.0.5.0.zip",
+                "checksum": "b4652a690a6e1c6eabe3f4df04572f40",
+                "timestamp": "2026-08-13T22:37:13Z"
+            },
+            {
                 "version": "1.0.4.0",
                 "changelog": "1.0.4.0 Continuously observe the route and DOM instead of listening only for #/details routes: log every route change plus the top element classes on item pages so the real detail page structure is always visible.\n1.0.3.0 Make button placement adaptive: search several detail-page containers with a header fallback, re-check during client re-renders, and log a DOM probe so the active container can be identified.\n1.0.2.0 Bypass browser/service worker caching of the client script: add a version query to the injected tag and no-store cache headers.\n1.0.1.0 Fix download button injection for Jellyfin 10.11: place the button in the main detail button row and stop depending on legacy api client helpers.\n1.0.0.0 Initial release",
                 "targetAbi": "10.11.0.0",
