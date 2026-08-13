@@ -1,7 +1,7 @@
 ---
 name: "Audio Downloader"
 guid: "a1d6f0e2-5c3b-4e8a-9f7d-2e4b8c1a9f34"
-version: "1.0.2.0"
+version: "1.0.3.0"
 targetAbi: "10.11.0.0"
 framework: "net9.0"
 overview: "Download a compressed audio track of a movie or show with intros, outros and dead air removed."
@@ -16,6 +16,10 @@ owner: "jellyfin"
 artifacts:
 - "Jellyfin.Plugin.AudioDownloader.dll"
 changelog: >-
+  1.0.3.0 Make button placement adaptive: search several detail-page containers
+  with a header fallback, re-check during client re-renders, and log a DOM probe
+  so the active container can be identified.
+
   1.0.2.0 Bypass browser/service worker caching of the client script: add a
   version query to the injected tag and no-store cache headers.
 

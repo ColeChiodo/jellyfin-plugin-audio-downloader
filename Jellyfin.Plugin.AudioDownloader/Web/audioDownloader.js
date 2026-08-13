@@ -6,6 +6,8 @@
 
     var currentItemId = null;
     var timer = null;
+    var pollCount = 0;
+    var button = null;
 
     function log(level, message) {
         try {
@@ -139,11 +141,9 @@
         var userId = currentUserId(apiClient);
 
         if (apiClient && typeof apiClient.getItem === 'function' && userId) {
-            log('info', 'resolving item through ApiClient.getItem');
             return apiClient.getItem(userId, itemId);
         }
 
-        log('info', 'resolving item through /Users/Me and /Users/{id}/Items/{id}');
         return request('Users/Me').then(function (me) {
             return request('Users/' + me.Id + '/Items/' + itemId);
         });
@@ -303,7 +303,7 @@
             buildDialog(item, tracks, defaultFormat);
         }).catch(function (err) {
             hideLoading();
-            log('warn', 'config fetch failed (' + (err && err.message) + '), using defaults');
+            log('info', 'config fetch failed (' + (err && err.message) + '), using defaults');
             buildDialog(item, tracks, 'm4a');
         });
     }
@@ -335,30 +335,94 @@
         });
     }
 
-    function addButton(itemId) {
+    function findButtonContainer() {
+        var candidates = [
+            '.mainDetailButtons',
+            '.detailPagePrimaryContent',
+            '.detailPagePrimaryContainer',
+            '.detailRibbon',
+            '#itemDetailPage',
+            '.headerRight'
+        ];
+        for (var i = 0; i < candidates.length; i++) {
+            var container = document.querySelector(candidates[i]);
+            if (container) {
+                return { el: container, selector: candidates[i] };
+            }
+        }
+
+        return null;
+    }
+
+    function dumpDetailClasses() {
+        try {
+            var found = {};
+            [
+                '.mainDetailButtons',
+                '.detailPagePrimaryContent',
+                '.detailPagePrimaryContainer',
+                '.detailPageContent',
+                '.detailRibbon',
+                '#itemDetailPage',
+                '.detailButton',
+                '.headerRight',
+                '.detailSection'
+            ].forEach(function (sel) {
+                found[sel] = !!document.querySelector(sel);
+            });
+
+            log('info', 'DOM probe: ' + JSON.stringify(found));
+        } catch (e) { /* noop */ }
+    }
+
+    function validateAndAdd(itemId, container) {
+        if (currentItemId === itemId && document.getElementById('audioDownloaderButton')) {
+            return;
+        }
+
+        if (currentItemId !== itemId) {
+            removeButton();
+            currentItemId = itemId;
+        }
+
+        getItem(itemId).then(function (item) {
+            var type = item && item.Type;
+            log('info', 'resolved item type: ' + type);
+            if (VIDEO_TYPES.indexOf(type) >= 0) {
+                addButton(itemId, container);
+            } else {
+                log('info', 'item type ' + type + ' is not video, skipping button');
+            }
+        }).catch(function (err) {
+            log('warn', 'could not resolve item type (' + (err && err.message) + '), adding button optimistically');
+            addButton(itemId, container);
+        });
+    }
+
+    function addButton(itemId, container) {
         if (document.getElementById('audioDownloaderButton')) {
             return;
         }
 
-        var container = document.querySelector('.mainDetailButtons') || document.querySelector('.detailPagePrimaryContent');
-        if (!container) {
-            log('info', 'button container not found yet (.mainDetailButtons/.detailPagePrimaryContent)');
-            return;
-        }
-
-        var button = document.createElement('button');
+        button = document.createElement('button');
         button.id = 'audioDownloaderButton';
         button.type = 'button';
         button.textContent = 'Download Audio';
         button.className = 'button-link emby-button';
-        button.style.cssText = 'margin-left:12px;';
+
+        if (container.selector === '.headerRight') {
+            button.style.cssText = 'margin-left:8px;';
+        } else {
+            button.style.cssText = 'margin-left:12px;';
+        }
+
         button.addEventListener('click', function () {
             onDownloadClicked(itemId);
         });
 
-        container.appendChild(button);
+        container.el.appendChild(button);
         currentItemId = itemId;
-        log('info', 'button added to "' + container.className + '" for item ' + itemId);
+        log('info', 'button added to "' + container.selector + '" for item ' + itemId);
     }
 
     function removeButton() {
@@ -367,27 +431,8 @@
             existing.parentNode.removeChild(existing);
         }
 
+        button = null;
         currentItemId = null;
-    }
-
-    function validateAndAdd(itemId) {
-        if (currentItemId === itemId && document.getElementById('audioDownloaderButton')) {
-            return;
-        }
-
-        getItem(itemId).then(function (item) {
-            var type = item && item.Type;
-            log('info', 'resolved item type: ' + type);
-            if (VIDEO_TYPES.indexOf(type) >= 0) {
-                addButton(itemId);
-            } else {
-                log('info', 'item type ' + type + ' is not video, skipping button');
-                removeButton();
-            }
-        }).catch(function (err) {
-            log('warn', 'could not resolve item type (' + (err && err.message) + '), adding button optimistically');
-            addButton(itemId);
-        });
     }
 
     function handleRoute() {
@@ -397,6 +442,7 @@
                 timer = null;
             }
 
+            pollCount = 0;
             removeButton();
             return;
         }
@@ -411,15 +457,31 @@
         }
 
         timer = window.setInterval(function () {
-            if (document.querySelector('.mainDetailButtons') || document.querySelector('.detailPagePrimaryContent')) {
-                window.clearInterval(timer);
-                timer = null;
-                validateAndAdd(itemId);
+            var container = findButtonContainer();
+            if (!container) {
+                pollCount++;
+                if (pollCount === 1 || pollCount % 8 === 1) {
+                    log('info', 'detail container not found yet (' + (pollCount * 0.5).toFixed(1) + 's)');
+                }
+
+                return;
             }
-        }, 400);
+
+            if (currentItemId !== itemId) {
+                removeButton();
+            }
+
+            if (document.getElementById('audioDownloaderButton')) {
+                return;
+            }
+
+            validateAndAdd(itemId, container);
+            pollCount = 0;
+        }, 500);
     }
 
     log('info', 'script loaded');
+    dumpDetailClasses();
     window.addEventListener('hashchange', handleRoute);
     document.addEventListener('DOMContentLoaded', handleRoute);
     handleRoute();
