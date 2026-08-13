@@ -1,3 +1,21 @@
+> [!CAUTION]
+>
+> ## ⚠️ VIBE-CODED PROJECT
+>
+> **No human has any part in the creation of this.**
+>
+> This project was generated entirely through AI-assisted development and questionable levels of confidence.
+>
+> It did, technically, begin with a [template](https://github.com/jellyfin/jellyfin-plugin-template)
+>
+> Beyond that initial scaffolding, no human wrote the code, reviewed every line, or can fully explain why some of it works.
+>
+> If you encounter unexpected behavior, please understand that this is the natural consequence of allowing vibes to participate in software engineering.
+>
+> **Proceed with caution.**
+>
+> By using this project, you acknowledge that conventional software development practices may have been observed only from a distance.
+
 # Jellyfin Audio Downloader
 
 A [Jellyfin](https://jellyfin.org) plugin that renders and downloads a compressed audio track of a movie, episode, season or series — with intros, outros, commercials and previews removed, and long stretches of dead air trimmed out.
