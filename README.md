@@ -27,10 +27,14 @@ This is useful for building playlists, listening to audiobooks, podcasts-style l
 
 ### From a repository manifest (recommended)
 
-Add a plugin repository to Jellyfin pointing at your built manifest, for example:
+The latest plugin is published to each [GitHub release](https://github.com/ColeChiodo/jellyfin-plugin-audio-downloader/releases) and the repository manifest is kept up to date at:
+
+```
+https://raw.githubusercontent.com/ColeChiodo/jellyfin-plugin-audio-downloader/main/manifest.json
+```
 
 1. In Jellyfin, go to **Dashboard → Plugins → Repositories** and click **Add repository**.
-2. Enter a friendly name and the URL of the repository manifest, e.g. `https://your-host/manifest.json`.
+2. Enter a friendly name and the repository manifest URL above.
 3. Choose **Catalog → Audio Downloader → Install** and restart Jellyfin when prompted.
 
 ### Manual install
@@ -140,9 +144,9 @@ dotnet test Jellyfin.Plugin.AudioDownloader.sln
 
 ### Continuous integration
 
-On every push to and pull request against the `main` branch, GitHub Actions runs the test suite, builds the solution, and (on push) packages the plugin zip + repository manifest via [jellyfin-plugin-repository-manager](https://github.com/oddstr13/jellyfin-plugin-repository-manager). Creating a GitHub Release for a version tag triggers the publish workflow that attaches the built zip to the release.
+On every push to and pull request against the `main` branch, GitHub Actions runs the test suite, builds the solution, and (on push) packages the plugin zip via [jellyfin-plugin-repository-manager](https://github.com/oddstr13/jellyfin-plugin-repository-manager). Publishing a GitHub release triggers the `release.yaml` workflow, which rebuilds the release zip, attaches it to the release, generates `manifest.json` and commits it to `main` so the repository URL above always points at the latest version.
 
-To build the distributable plugin `zip` and `manifest.json` for a repository, follow the shared plugin CI flow, or pack the assembly manually:
+To build the distributable plugin `zip` locally, run the build through JPRM or pack the assembly manually:
 
 ```bash
 dotnet publish Jellyfin.Plugin.AudioDownloader/Jellyfin.Plugin.AudioDownloader.csproj \

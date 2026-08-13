@@ -1,0 +1,84 @@
+name: 'Release Plugin Repository'
+
+on:
+  release:
+    types:
+      - released
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Install JPRM
+        run: |-
+          python3 -m venv .venv
+          .venv/bin/pip install jprm
+
+      - name: Build Plugin
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |-
+          VERSION="${TAG#v}"
+          mkdir -p bin
+          .venv/bin/jprm plugin build . -o bin -v "$VERSION"
+
+      - name: Compute Checksums
+        run: |-
+          cd bin
+          for file in ./*.zip; do
+            md5sum "${file#./}" >> "${file#./}.md5"
+            sha256sum "${file#./}" >> "${file#./}.sha256"
+          done
+          ls -l
+
+      - name: Upload Release Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: bin/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate Repository Manifest
+        run: |-
+          ZIP="$(ls bin/*.zip | head -n 1)"
+          NAME="$(basename "$ZIP")"
+          TAG="${{ github.event.release.tag_name }}"
+          ASSET_URL="https://github.com/${{ github.repository }}/releases/download/${TAG}/${NAME}"
+
+          for i in $(seq 1 30); do
+            if curl -fsSI "$ASSET_URL" >/dev/null 2>&1; then
+              echo "Asset available at $ASSET_URL"
+              break
+            fi
+            echo "Waiting for asset $ASSET_URL (attempt ${i}/30)"
+            sleep 10
+          done
+
+          .venv/bin/jprm repo init manifest.json
+          .venv/bin/jprm repo add --plugin-url "$ASSET_URL" manifest.json "$ZIP"
+
+      - name: Commit Manifest
+        run: |-
+          git checkout main
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add manifest.json
+          if git diff --cached --quiet; then
+            echo "No manifest changes to commit."
+          else
+            git commit -m "Update plugin repository manifest for ${{ github.event.release.tag_name }}"
+            git push origin main
+          fi
