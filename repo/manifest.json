@@ -1,0 +1,20 @@
+[
+    {
+        "guid": "a1d6f0e2-5c3b-4e8a-9f7d-2e4b8c1a9f34",
+        "name": "Audio Downloader",
+        "description": "Adds a \"Download Audio\" button to the web client for movies, episodes, seasons and series. The rendered track has detected intro, outro, commercial and preview segments cut (via Jellyfin media segments as produced by the Intro Skipper plugin) and long silent periods removed. Output can be MP3 or M4A/AAC and the audio track can be chosen when multiple languages are present.\n",
+        "overview": "Download a compressed audio track of a movie or show with intros, outros and dead air removed.",
+        "owner": "jellyfin",
+        "category": "General",
+        "versions": [
+            {
+                "version": "1.0.0.0",
+                "changelog": "1.0.0.0 Initial release",
+                "targetAbi": "10.11.0.0",
+                "sourceUrl": "https://github.com/ColeChiodo/jellyfin-plugin-audio-downloader/releases/download/v1.0.0.0/audio-downloader_1.0.0.0.zip",
+                "checksum": "76e2d2c96665672d819906033b9879e8",
+                "timestamp": "2026-08-13T21:16:35Z"
+            }
+        ]
+    }
+]

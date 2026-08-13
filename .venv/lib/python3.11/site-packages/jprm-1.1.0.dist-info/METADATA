@@ -1,0 +1,83 @@
+Metadata-Version: 2.1
+Name: jprm
+Version: 1.1.0
+Summary: Jellyfin Plugin Repository Manager
+Home-page: https://github.com/oddstr13/jellyfin-plugin-repository-manager
+Author: Odd Stråbø
+Author-email: oddstr13@openshell.no
+Keywords: Jellyfin plugin repository compile publish development
+Classifier: Programming Language :: Python :: 3 :: Only
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: License :: OSI Approved :: Mozilla Public License 2.0 (MPL 2.0)
+Classifier: Operating System :: OS Independent
+Classifier: Intended Audience :: Developers
+Classifier: Intended Audience :: System Administrators
+Classifier: Topic :: Software Development :: Build Tools
+Classifier: Topic :: System :: Software Distribution
+Requires-Python: >=3.8.1
+Description-Content-Type: text/markdown
+License-File: LICENSE.txt
+Requires-Dist: Click !=8.0.0,~=8.0
+Requires-Dist: click-log ~=0.4.0
+Requires-Dist: PyYAML <7,>=5.4
+Requires-Dist: python-slugify ~=8.0
+Requires-Dist: tabulate ~=0.9.0
+
+Installing
+==========
+From PyPI
+---------
+```bash
+pip install --user jprm
+```
+
+From GitHub
+-----------
+```
+pip install --user git+https://github.com/oddstr13/jellyfin-plugin-repository-manager
+```
+
+From local developement directory
+---------------------------------
+```
+git clone https://github.com/oddstr13/jellyfin-plugin-repository-manager.git
+pip install --user --editable jellyfin-plugin-metadata-manager
+```
+
+Stand-alone Python script
+-------------------------
+```
+wget -O jprm.py https://raw.githubusercontent.com/oddstr13/jellyfin-plugin-repository-manager/master/jprm/__init__.py
+```
+
+Examples
+========
+
+Running jprm
+------------
+
+```
+jprm --version
+```
+
+```
+python3 -m jprm --version
+```
+
+```
+python3 jprm.py --version
+```
+
+Initializing plugin repository
+------------------------------
+
+```
+mkdir -p /path/to/repo
+jprm repo init /path/to/repo
+```
+
+See [build_plugin.sh](https://github.com/oddstr13/jellyfin-plugin-repository-manager/blob/master/build_plugin.sh) for an example script.

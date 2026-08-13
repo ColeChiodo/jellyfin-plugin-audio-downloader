@@ -5,15 +5,150 @@
     var VIDEO_TYPES = ['Movie', 'Series', 'Season', 'Episode'];
 
     var currentItemId = null;
-    var buttonAdded = false;
     var timer = null;
+
+    function log(level, message) {
+        try {
+            var line = '[AudioDownloader] ' + message;
+            if (level === 'error') {
+                console.error(line);
+            } else if (level === 'warn') {
+                console.warn(line);
+            } else {
+                console.info(line);
+            }
+        } catch (e) { /* noop */ }
+    }
 
     function getApiClient() {
         if (window.ApiClient) {
             return window.ApiClient;
         }
 
+        if (window.connectionManager && window.connectionManager.currentApiClient) {
+            var client = window.connectionManager.currentApiClient;
+            if (typeof client === 'function') {
+                return client();
+            }
+
+            return client;
+        }
+
         return null;
+    }
+
+    function getToken(apiClient) {
+        if (!apiClient) {
+            return '';
+        }
+
+        try {
+            if (typeof apiClient.accessToken === 'function') {
+                return apiClient.accessToken() || '';
+            }
+
+            if (apiClient.accessToken) {
+                return apiClient.accessToken;
+            }
+        } catch (e) { /* noop */ }
+
+        return '';
+    }
+
+    function getBaseUrl(apiClient) {
+        if (!apiClient) {
+            return '';
+        }
+
+        try {
+            if (typeof apiClient.serverAddress === 'function') {
+                return apiClient.serverAddress();
+            }
+
+            if (typeof apiClient.getServerAddress === 'function') {
+                return apiClient.getServerAddress();
+            }
+
+            if (apiClient.serverAddress) {
+                return apiClient.serverAddress;
+            }
+        } catch (e) { /* noop */ }
+
+        return '';
+    }
+
+    function buildUrl(path, params) {
+        var apiClient = getApiClient();
+        if (apiClient && typeof apiClient.getUrl === 'function') {
+            try {
+                return apiClient.getUrl(path, params);
+            } catch (e) { /* noop */ }
+        }
+
+        var url = getBaseUrl(apiClient) + '/' + path;
+        var query = [];
+        for (var key in (params || {})) {
+            if (Object.prototype.hasOwnProperty.call(params, key)) {
+                query.push(encodeURIComponent(key) + '=' + encodeURIComponent(params[key]));
+            }
+        }
+
+        if (query.length) {
+            url += '?' + query.join('&');
+        }
+
+        return url;
+    }
+
+    function request(path, params) {
+        var token = getToken(getApiClient());
+        var url = buildUrl(path, params);
+        var headers = {};
+        if (token) {
+            headers['X-Emby-Token'] = token;
+        }
+
+        return fetch(url, {
+            headers: headers
+        }).then(function (response) {
+            if (!response.ok) {
+                throw new Error(path + ' returned ' + response.status);
+            }
+
+            return response.json();
+        });
+    }
+
+    function currentUserId(apiClient) {
+        if (!apiClient) {
+            return null;
+        }
+
+        try {
+            if (typeof apiClient.getCurrentUserId === 'function') {
+                var id = apiClient.getCurrentUserId();
+                if (id) {
+                    return id;
+                }
+            }
+        } catch (e) { /* noop */ }
+
+        return null;
+    }
+
+    function getItem(itemId) {
+        var apiClient = getApiClient();
+        var userId = currentUserId(apiClient);
+
+        if (apiClient && typeof apiClient.getItem === 'function' && userId) {
+            log('info', 'resolving item through ApiClient.getItem');
+            return apiClient.getItem(userId, itemId);
+        }
+
+        log('info', 'resolving item through /Users/Me and /Users/{id}/Items/{id}');
+        return request('Users/Me').then(function (me) {
+            return request('Users/' + me.Id + '/Items/' + itemId);
+        });
     }
 
     function getQueryParam(name) {
@@ -24,17 +159,13 @@
     function showLoading() {
         try {
             window.Dashboard.showLoadingMsg();
-        } catch (e) {
-            /* noop */
-        }
+        } catch (e) { /* noop */ }
     }
 
     function hideLoading() {
         try {
             window.Dashboard.hideLoadingMsg();
-        } catch (e) {
-            /* noop */
-        }
+        } catch (e) { /* noop */ }
     }
 
     function toast(message) {
@@ -58,32 +189,14 @@
         return (name || 'audio').replace(/[\\/:*?"<>|]/g, '_');
     }
 
-    function buildDownloadUrl(itemId, streamIndex, format, token) {
-        var apiClient = getApiClient();
-        if (apiClient && typeof apiClient.getUrl === 'function') {
-            return apiClient.getUrl('AudioDownloader/download', {
-                itemId: itemId,
-                stream: streamIndex,
-                format: format,
-                api_key: token
-            });
-        }
-
-        return 'AudioDownloader/download?itemId=' + encodeURIComponent(itemId) +
-            '&stream=' + encodeURIComponent(streamIndex) +
-            '&format=' + encodeURIComponent(format) +
-            '&api_key=' + encodeURIComponent(token);
-    }
-
     function startDownload(item, streamIndex, format) {
-        var apiClient = getApiClient();
-        if (!apiClient) {
-            toast('API client not available.');
-            return;
-        }
-
-        var token = typeof apiClient.accessToken === 'function' ? apiClient.accessToken() : '';
-        var url = buildDownloadUrl(item.Id, streamIndex, format, token);
+        var token = getToken(getApiClient());
+        var url = buildUrl('AudioDownloader/download', {
+            itemId: item.Id,
+            stream: streamIndex,
+            format: format,
+            api_key: token
+        });
 
         var anchor = document.createElement('a');
         anchor.href = url;
@@ -180,42 +293,31 @@
     }
 
     function showChooser(item, tracks) {
-        var apiClient = getApiClient();
         var defaultFormat = 'm4a';
-
-        var defaultsPromise = apiClient && typeof apiClient.getPluginConfiguration === 'function'
-            ? apiClient.getPluginConfiguration(PLUGIN_ID)
-            : Promise.resolve(null);
-
         showLoading();
-        defaultsPromise.then(function (config) {
+
+        request('Plugins/' + PLUGIN_ID + '/Configuration').then(function (config) {
             hideLoading();
             if (config && config.DefaultFormat === 'Mpeg3') {
                 defaultFormat = 'mp3';
             }
 
             buildDialog(item, tracks, defaultFormat);
-        }).catch(function () {
+        }).catch(function (err) {
             hideLoading();
+            log('warn', 'config fetch failed (' + (err && err.message) + '), using defaults');
             buildDialog(item, tracks, 'm4a');
         });
     }
 
+    function loadTracks(itemId) {
+        return request('AudioDownloader/tracks', { itemId: itemId });
+    }
+
     function onDownloadClicked(itemId) {
-        var apiClient = getApiClient();
-        if (!apiClient || typeof apiClient.getItem !== 'function') {
-            toast('API client not available.');
-            return;
-        }
-
-        apiClient.getItem(apiClient.getCurrentUserId(), itemId).then(function (item) {
-            if (!apiClient || typeof apiClient.getJSON !== 'function') {
-                toast('API client not available.');
-                return;
-            }
-
+        getItem(itemId).then(function (item) {
             showLoading();
-            apiClient.getJSON(apiClient.getUrl('AudioDownloader/tracks', { itemId: itemId })).then(function (tracks) {
+            loadTracks(itemId).then(function (tracks) {
                 hideLoading();
                 tracks = tracks || [];
                 if (tracks.length === 0) {
@@ -224,22 +326,25 @@
                 }
 
                 showChooser(item, tracks);
-            }).catch(function () {
+            }).catch(function (err) {
                 hideLoading();
+                log('error', 'failed to load tracks: ' + (err && err.message));
                 toast('Failed to load audio tracks.');
             });
-        }).catch(function () {
+        }).catch(function (err) {
+            log('error', 'failed to load item details: ' + (err && err.message));
             toast('Failed to load item details.');
         });
     }
 
     function addButton(itemId) {
-        var container = document.querySelector('.detailPagePrimaryContent');
-        if (!container) {
+        if (document.getElementById('audioDownloaderButton')) {
             return;
         }
 
-        if (container.querySelector('#audioDownloaderButton')) {
+        var container = document.querySelector('.mainDetailButtons') || document.querySelector('.detailPagePrimaryContent');
+        if (!container) {
+            log('info', 'button container not found yet (.mainDetailButtons/.detailPagePrimaryContent)');
             return;
         }
 
@@ -254,8 +359,8 @@
         });
 
         container.appendChild(button);
-        buttonAdded = true;
         currentItemId = itemId;
+        log('info', 'button added to "' + container.className + '" for item ' + itemId);
     }
 
     function removeButton() {
@@ -264,27 +369,27 @@
             existing.parentNode.removeChild(existing);
         }
 
-        buttonAdded = false;
         currentItemId = null;
     }
 
     function validateAndAdd(itemId) {
-        if (buttonAdded && currentItemId === itemId) {
+        if (currentItemId === itemId && document.getElementById('audioDownloaderButton')) {
             return;
         }
 
-        var apiClient = getApiClient();
-        if (!apiClient || typeof apiClient.getItem !== 'function') {
-            return;
-        }
-
-        apiClient.getItem(apiClient.getCurrentUserId(), itemId).then(function (item) {
-            if (VIDEO_TYPES.indexOf(item.Type) >= 0) {
+        getItem(itemId).then(function (item) {
+            var type = item && item.Type;
+            log('info', 'resolved item type: ' + type);
+            if (VIDEO_TYPES.indexOf(type) >= 0) {
                 addButton(itemId);
-            } else if (buttonAdded) {
+            } else {
+                log('info', 'item type ' + type + ' is not video, skipping button');
                 removeButton();
             }
-        }).catch(function () { });
+        }).catch(function (err) {
+            log('warn', 'could not resolve item type (' + (err && err.message) + '), adding button optimistically');
+            addButton(itemId);
+        });
     }
 
     function handleRoute() {
@@ -308,7 +413,7 @@
         }
 
         timer = window.setInterval(function () {
-            if (document.querySelector('.detailPagePrimaryContent')) {
+            if (document.querySelector('.mainDetailButtons') || document.querySelector('.detailPagePrimaryContent')) {
                 window.clearInterval(timer);
                 timer = null;
                 validateAndAdd(itemId);
@@ -316,6 +421,7 @@
         }, 400);
     }
 
+    log('info', 'script loaded');
     window.addEventListener('hashchange', handleRoute);
     document.addEventListener('DOMContentLoaded', handleRoute);
     handleRoute();
