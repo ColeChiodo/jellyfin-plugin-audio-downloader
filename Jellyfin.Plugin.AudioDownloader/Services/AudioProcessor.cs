@@ -328,6 +328,7 @@ public sealed class AudioProcessor
 
         _logger.LogDebug("Running silence detection: ffmpeg {Arguments}", ArgsToStringSafe(args));
 
+        var exitCode = 0;
         using (process)
         {
             try
@@ -341,13 +342,15 @@ public sealed class AudioProcessor
                 TryKill(process);
                 throw;
             }
+
+            exitCode = process.ExitCode;
         }
 
-        if (process.ExitCode != 0)
+        if (exitCode != 0)
         {
             _logger.LogWarning(
                 "Silence detection exited with code {ExitCode}: {Log}",
-                process.ExitCode,
+                exitCode,
                 error.ToString());
         }
 
@@ -567,6 +570,7 @@ public sealed class AudioProcessor
             }
         };
 
+        var exitCode = 0;
         using (process)
         {
             try
@@ -580,15 +584,17 @@ public sealed class AudioProcessor
                 TryKill(process);
                 throw;
             }
+
+            exitCode = process.ExitCode;
         }
 
-        if (process.ExitCode != 0)
+        if (exitCode != 0)
         {
             throw new InvalidOperationException(
                 string.Format(
                     CultureInfo.InvariantCulture,
                     "ffmpeg exited with code {0}: {1}",
-                    process.ExitCode,
+                    exitCode,
                     error.ToString()));
         }
     }
