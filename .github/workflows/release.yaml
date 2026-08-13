@@ -53,6 +53,7 @@ jobs:
 
       - name: Generate Repository Manifest
         run: |-
+          git checkout main
           ZIP="$(ls bin/*.zip | head -n 1)"
           NAME="$(basename "$ZIP")"
           TAG="${{ github.event.release.tag_name }}"
@@ -67,12 +68,11 @@ jobs:
             sleep 10
           done
 
-          .venv/bin/jprm repo init manifest.json
-          .venv/bin/jprm repo add --plugin-url "$ASSET_URL" manifest.json "$ZIP"
+          test -f manifest.json || .venv/bin/jprm repo init .
+          .venv/bin/jprm repo add --plugin-url "$ASSET_URL" . "$ZIP"
 
       - name: Commit Manifest
         run: |-
-          git checkout main
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add manifest.json
