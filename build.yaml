@@ -1,7 +1,7 @@
 ---
 name: "Audio Downloader"
 guid: "a1d6f0e2-5c3b-4e8a-9f7d-2e4b8c1a9f34"
-version: "1.0.6.0"
+version: "1.0.7.0"
 targetAbi: "10.11.0.0"
 framework: "net9.0"
 overview: "Download a compressed audio track of a movie or show with intros, outros and dead air removed."
@@ -15,7 +15,11 @@ category: "General"
 owner: "jellyfin"
 artifacts:
 - "Jellyfin.Plugin.AudioDownloader.dll"
-changelog: >-
+changelog: |
+  1.0.7.0 Report the complete ffmpeg error instead of a truncated snippet and
+  raise analyzeduration/probesize so Matroska files with attachment streams
+  probe correctly.
+
   1.0.6.0 Fix every download failing with "No process is associated with this
   object" by reading the ffmpeg exit code before the process object is disposed.
 

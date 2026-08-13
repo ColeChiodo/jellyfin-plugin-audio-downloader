@@ -204,7 +204,7 @@
         fetch(url, { headers: headers }).then(function (response) {
             if (!response.ok) {
                 return response.text().then(function (body) {
-                    throw new Error('server returned ' + response.status + ': ' + (body || 'no body').slice(0, 300));
+                    throw new Error('server returned ' + response.status + ': ' + (body || 'no body').slice(0, 2000));
                 });
             }
 
