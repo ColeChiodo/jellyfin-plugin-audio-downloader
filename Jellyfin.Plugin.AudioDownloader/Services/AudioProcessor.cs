@@ -196,7 +196,7 @@ public sealed class AudioProcessor
                     continue;
                 }
 
-                var audioPosition = IndexOfStream(source.MediaStreams, audioStream);
+                var audioPosition = IndexOfAudioStream(source.MediaStreams, audioStream);
                 if (i == 0)
                 {
                     targetChannels = ComputeTargetChannels(audioStream.Channels, format, config.MaxChannels);
@@ -310,7 +310,7 @@ public sealed class AudioProcessor
             "-i",
             inputPath,
             "-map",
-            string.Format(CultureInfo.InvariantCulture, "0:{0}", audioPosition),
+            string.Format(CultureInfo.InvariantCulture, "0:a:{0}", audioPosition),
             "-vn",
             "-af",
             string.Format(CultureInfo.InvariantCulture, "silencedetect=n={0}dB:d={1:0.###}", config.SilenceThresholdDb, config.SilenceDurationSeconds),
@@ -419,7 +419,7 @@ public sealed class AudioProcessor
             "-i",
             inputPath,
             "-map",
-            string.Format(CultureInfo.InvariantCulture, "0:{0}", audioPosition),
+            string.Format(CultureInfo.InvariantCulture, "0:a:{0}", audioPosition),
             "-vn"
         };
 
@@ -789,6 +789,27 @@ public sealed class AudioProcessor
             }
 
             index++;
+        }
+
+        return 0;
+    }
+
+    internal static int IndexOfAudioStream(IEnumerable<MediaStream> streams, MediaStream targetStream)
+    {
+        var ordinal = 0;
+        foreach (var candidate in streams)
+        {
+            if (candidate.Type != MediaStreamType.Audio || candidate.IsExternal)
+            {
+                continue;
+            }
+
+            if (ReferenceEquals(candidate, targetStream))
+            {
+                return ordinal;
+            }
+
+            ordinal++;
         }
 
         return 0;

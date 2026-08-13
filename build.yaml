@@ -1,7 +1,7 @@
 ---
 name: "Audio Downloader"
 guid: "a1d6f0e2-5c3b-4e8a-9f7d-2e4b8c1a9f34"
-version: "1.0.9.0"
+version: "1.0.10.0"
 targetAbi: "10.11.0.0"
 framework: "net9.0"
 overview: "Download a compressed audio track of a movie or show with intros, outros and dead air removed."
@@ -16,6 +16,11 @@ owner: "jellyfin"
 artifacts:
 - "Jellyfin.Plugin.AudioDownloader.dll"
 changelog: |
+  1.0.10.0 Select the audio track in ffmpeg by ordinal (0:a:N) instead of
+  absolute stream position. The old mapping could point at a subtitle when
+  Jellyfin's stream list ordering differs from the file's indices, which made
+  m4a output fail with "encoder not found".
+
   1.0.9.0 Fix the silence/segment cutting filter graph: ffmpeg requires commas
   inside expressions to be escaped, which the previous quoting broke. Log every
   ffmpeg invocation to the server log so failures can be traced.

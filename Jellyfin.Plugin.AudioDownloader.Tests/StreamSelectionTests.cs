@@ -112,4 +112,33 @@ public class StreamSelectionTests
 
         Assert.Equal(0, index);
     }
+
+    [Fact]
+    public void IndexOfAudioStream_CountsOnlyAudioStreams()
+    {
+        var video = TestHelpers.VideoStream(0);
+        var engSubs = new MediaStream
+        {
+            Type = MediaStreamType.Subtitle,
+            Index = 1
+        };
+        var audio = TestHelpers.AudioStream(2, "eng", 2);
+        var deuAudio = TestHelpers.AudioStream(3, "deu", 2);
+        var streams = new[] { video, engSubs, audio, deuAudio };
+
+        var audioOrdinal = AudioProcessor.IndexOfAudioStream(streams, deuAudio);
+
+        Assert.Equal(1, audioOrdinal);
+    }
+
+    [Fact]
+    public void IndexOfAudioStream_ReturnsZeroWhenNotFound()
+    {
+        var audio = TestHelpers.AudioStream(1, "eng", 2);
+        var other = TestHelpers.AudioStream(2, "deu", 2);
+
+        var index = AudioProcessor.IndexOfAudioStream(new[] { audio }, other);
+
+        Assert.Equal(0, index);
+    }
 }
